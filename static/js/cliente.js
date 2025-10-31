@@ -74,19 +74,17 @@ function actualizarUI(estado) {
     statPuntuacion.textContent = estado.puntuacion;
     statCapsulas.textContent = `${estado.capsulas_recogidas}/${estado.total_capsulas}`;
     
+    const statFantasmas = document.getElementById('stat-fantasmas');
     const statPoder = document.getElementById('stat-poder');
-    const statVelocidad = document.getElementById('stat-velocidad');
+    
+    statFantasmas.textContent = `${estado.fantasmas_comidos}/${estado.num_fantasmas_total}`;
     
     if (estado.pacman_poderoso) {
         statPoder.textContent = `⚡${estado.turnos_poder_restantes}`;
         statPoder.style.color = '#00FF00';
-        statVelocidad.textContent = '50%';
-        statVelocidad.style.color = '#2196F3';
     } else {
         statPoder.textContent = '❌';
         statPoder.style.color = '#fff';
-        statVelocidad.textContent = '90%';
-        statVelocidad.style.color = '#FF1744';
     }
     
     statMovimientos.textContent = estado.movimientos;

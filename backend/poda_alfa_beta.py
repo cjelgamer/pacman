@@ -1,13 +1,10 @@
 import time
 
-# Variable global para controlar tiempo
 tiempo_inicio = 0
-TIEMPO_MAXIMO = 1.5  # Reducido de 2.0 a 1.5 segundos
+TIEMPO_MAXIMO = 1.5
 
 def decision_alfa_beta(estado, profundidad_maxima):
-    """
-    Retorna la mejor decisión para Pacman usando Poda Alfa-Beta
-    """
+    """Retorna la mejor decisión para Pacman usando Poda Alfa-Beta"""
     global tiempo_inicio
     tiempo_inicio = time.time()
     
@@ -21,26 +18,25 @@ def decision_alfa_beta(estado, profundidad_maxima):
     if not movimientos_validos:
         return None
     
-    # Si hay muchos fantasmas, reducir profundidad
     if len(estado.pos_fantasmas) > 2 and profundidad_maxima > 2:
         profundidad_maxima = 2
     
     for movimiento in movimientos_validos:
-        # Simular movimiento
         estado_siguiente = estado.clonar()
         estado_siguiente.mover_pacman(movimiento)
         
-        # Obtener valor usando alfa-beta (turno MIN para fantasmas)
-        valor = valor_min_alfa_beta(estado_siguiente, profundidad_maxima - 1, 0, alfa, beta)
+        # Si el juego terminó, evaluar directamente
+        if estado_siguiente.juego_terminado:
+            valor = estado_siguiente.evaluar()
+        else:
+            valor = valor_min_alfa_beta(estado_siguiente, profundidad_maxima - 1, 0, alfa, beta)
         
         if valor > mejor_valor:
             mejor_valor = valor
             mejor_movimiento = movimiento
         
-        # Actualizar alfa
         alfa = max(alfa, mejor_valor)
         
-        # Verificar timeout
         if time.time() - tiempo_inicio > TIEMPO_MAXIMO:
             break
     
@@ -48,14 +44,10 @@ def decision_alfa_beta(estado, profundidad_maxima):
 
 
 def valor_max_alfa_beta(estado, profundidad, indice_fantasma, alfa, beta):
-    """
-    Calcula el valor MAX (turno de Pacman) con poda Alfa-Beta
-    """
-    # Verificar timeout
+    """Calcula el valor MAX (turno de Pacman) con poda Alfa-Beta"""
     if time.time() - tiempo_inicio > TIEMPO_MAXIMO:
         return estado.evaluar()
     
-    # Condiciones de término
     if estado.juego_terminado or profundidad == 0:
         return estado.evaluar()
     
@@ -69,29 +61,24 @@ def valor_max_alfa_beta(estado, profundidad, indice_fantasma, alfa, beta):
         estado_siguiente = estado.clonar()
         estado_siguiente.mover_pacman(movimiento)
         
-        # Después de mover Pacman, turno de fantasmas (MIN)
-        valor = max(valor, valor_min_alfa_beta(estado_siguiente, profundidad - 1, 0, alfa, beta))
+        if estado_siguiente.juego_terminado:
+            valor = max(valor, estado_siguiente.evaluar())
+        else:
+            valor = max(valor, valor_min_alfa_beta(estado_siguiente, profundidad - 1, 0, alfa, beta))
         
-        # Poda Beta
         if valor >= beta:
             return valor
         
-        # Actualizar alfa
         alfa = max(alfa, valor)
     
     return valor
 
 
 def valor_min_alfa_beta(estado, profundidad, indice_fantasma, alfa, beta):
-    """
-    Calcula el valor MIN (turno de fantasmas) con poda Alfa-Beta
-    Simula el movimiento de todos los fantasmas
-    """
-    # Verificar timeout
+    """Calcula el valor MIN (turno de fantasmas) con poda Alfa-Beta"""
     if time.time() - tiempo_inicio > TIEMPO_MAXIMO:
         return estado.evaluar()
     
-    # Condiciones de término
     if estado.juego_terminado or profundidad == 0:
         return estado.evaluar()
     
@@ -104,27 +91,37 @@ def valor_min_alfa_beta(estado, profundidad, indice_fantasma, alfa, beta):
     movimientos_validos = estado.obtener_movimientos_validos_fantasma(pos_fantasma)
     
     if not movimientos_validos:
-        # Si no hay movimientos, pasar al siguiente fantasma
         return valor_min_alfa_beta(estado, profundidad, indice_fantasma + 1, alfa, beta)
     
     for nueva_pos in movimientos_validos:
         estado_siguiente = estado.clonar()
+        
+        # Mover el fantasma actual
         estado_siguiente.pos_fantasmas[indice_fantasma] = nueva_pos
         
-        # Verificar colisión después de mover fantasma
+        # Verificar colisión DESPUÉS de mover este fantasma
         if estado_siguiente.pos_pacman in estado_siguiente.pos_fantasmas:
-            estado_siguiente.juego_terminado = True
-            estado_siguiente.mensaje = "¡Pacman fue capturado!"
-            estado_siguiente.puntuacion -= 100
+            if estado_siguiente.pacman_poderoso:
+                # ⚡ Pacman come al fantasma
+                estado_siguiente.pos_fantasmas.remove(estado_siguiente.pos_pacman)
+                estado_siguiente.puntuacion += 200
+                
+                if len(estado_siguiente.pos_fantasmas) == 0:
+                    estado_siguiente.juego_terminado = True
+                    estado_siguiente.mensaje = "¡Pacman ganó! ¡Comió todos los fantasmas!"
+                    estado_siguiente.puntuacion += 500
+            else:
+                # Pacman es capturado
+                estado_siguiente.juego_terminado = True
+                estado_siguiente.mensaje = "¡Pacman fue capturado!"
+                estado_siguiente.puntuacion -= 100
         
         # Continuar con el siguiente fantasma
         valor = min(valor, valor_min_alfa_beta(estado_siguiente, profundidad, indice_fantasma + 1, alfa, beta))
         
-        # Poda Alfa
         if valor <= alfa:
             return valor
         
-        # Actualizar beta
         beta = min(beta, valor)
     
     return valor

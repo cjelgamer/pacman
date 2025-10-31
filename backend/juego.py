@@ -237,7 +237,7 @@ class EstadoJuego:
             if self.turnos_poder_restantes <= 0:
                 self.pacman_poderoso = False
         
-        # Verificar si recoge cápsula normal
+        # Verificar si recoge cápsula normal (SIEMPRE, con o sin poder)
         if self.pos_pacman in self.capsulas:
             self.capsulas.remove(self.pos_pacman)
             self.puntuacion += 10
@@ -252,9 +252,22 @@ class EstadoJuego:
         
         # Verificar colisión con fantasmas
         if self.pos_pacman in self.pos_fantasmas:
-            self.juego_terminado = True
-            self.mensaje = "¡Pacman fue capturado!"
-            self.puntuacion -= 100
+            if self.pacman_poderoso:
+                # ⚡ ¡Pacman COME al fantasma!
+                self.pos_fantasmas.remove(self.pos_pacman)
+                self.puntuacion += 200
+                self.num_fantasmas = len(self.pos_fantasmas)
+                
+                # Si comió todos los fantasmas, VICTORIA
+                if len(self.pos_fantasmas) == 0:
+                    self.juego_terminado = True
+                    self.mensaje = "¡Pacman ganó! ¡Comió todos los fantasmas!"
+                    self.puntuacion += 500
+            else:
+                # Pacman es capturado
+                self.juego_terminado = True
+                self.mensaje = "¡Pacman fue capturado!"
+                self.puntuacion -= 100
             return True
         
         # Verificar si ganó (recogió todas las cápsulas)
@@ -298,9 +311,20 @@ class EstadoJuego:
         
         # Verificar colisiones
         if self.pos_pacman in self.pos_fantasmas:
-            self.juego_terminado = True
-            self.mensaje = "¡Pacman fue capturado!"
-            self.puntuacion -= 100
+            if self.pacman_poderoso:
+                # ⚡ Pacman come al fantasma
+                self.pos_fantasmas.remove(self.pos_pacman)
+                self.puntuacion += 200
+                self.num_fantasmas = len(self.pos_fantasmas)
+                
+                if len(self.pos_fantasmas) == 0:
+                    self.juego_terminado = True
+                    self.mensaje = "¡Pacman ganó! ¡Comió todos los fantasmas!"
+                    self.puntuacion += 500
+            else:
+                self.juego_terminado = True
+                self.mensaje = "¡Pacman fue capturado!"
+                self.puntuacion -= 100
     
     def _siguiente_paso_hacia_pacman(self, pos_fantasma):
         """Calcula el siguiente paso del fantasma hacia Pacman usando BFS"""
@@ -358,35 +382,41 @@ class EstadoJuego:
             distancia_min_fantasma = min(distancias_fantasmas)
             
             if self.pacman_poderoso:
-                # ⚡ MODO PODER: Los fantasmas HUYEN y van lentos (50%)
-                # Pacman debe APROVECHAR para recoger cápsulas, manteniendo distancia segura
+                # ⚡ MODO CAZADOR: ¡PERSEGUIR Y COMER FANTASMAS!
+                # Cuanto más cerca del fantasma, mejor
                 
-                # Mantener distancia segura (no muy cerca, no muy lejos)
-                if distancia_min_fantasma <= 2:
-                    # Demasiado cerca, alejarse un poco
-                    puntos -= 300
-                elif distancia_min_fantasma <= 4:
-                    # Distancia perfecta: cerca pero seguro
-                    puntos += 400
-                elif distancia_min_fantasma <= 7:
-                    # Buena distancia
-                    puntos += 200
+                if distancia_min_fantasma == 0:
+                    # ¡Contacto! (se come al fantasma)
+                    puntos += 2000
+                elif distancia_min_fantasma == 1:
+                    # ¡A punto de comerlo!
+                    puntos += 1500
+                elif distancia_min_fantasma == 2:
+                    # Muy cerca
+                    puntos += 1000
+                elif distancia_min_fantasma == 3:
+                    # Cerca
+                    puntos += 600
+                elif distancia_min_fantasma <= 5:
+                    # Persiguiendo
+                    puntos += 300
                 else:
-                    # Muy lejos, está bien
-                    puntos += 100
+                    # Demasiado lejos, acercarse
+                    puntos -= distancia_min_fantasma * 80
                 
-                # PRIORIZAR cápsulas cuando tiene poder (¡es el momento perfecto!)
+                # Bonificación por tiempo de poder restante
+                puntos += self.turnos_poder_restantes * 60
+                
+                # También recoger cápsulas si están en el camino
                 if self.capsulas:
                     distancias_capsulas = [self._distancia_manhattan(self.pos_pacman, c) 
                                            for c in self.capsulas]
                     distancia_min_capsula = min(distancias_capsulas)
-                    puntos -= distancia_min_capsula * 80  # ¡IR POR CÁPSULAS!
-                
-                # Bonificación por tiempo de poder restante
-                puntos += self.turnos_poder_restantes * 50
+                    # Prioridad media a cápsulas (menos que fantasmas)
+                    puntos -= distancia_min_capsula * 15
                 
             else:
-                # 🏃 MODO NORMAL: Sin poder, HUYE de los fantasmas
+                # 🏃 MODO HUIDA: Sin poder, HUYE de los fantasmas
                 if distancia_min_fantasma == 1:
                     puntos -= 3000  # ¡PELIGRO EXTREMO!
                 elif distancia_min_fantasma == 2:
@@ -401,6 +431,13 @@ class EstadoJuego:
                     puntos += 50
                 else:
                     puntos += distancia_min_fantasma * 40  # Recompensa por estar lejos
+        else:
+            # ¡No hay fantasmas! Solo recoger cápsulas
+            if self.capsulas:
+                distancias_capsulas = [self._distancia_manhattan(self.pos_pacman, c) 
+                                       for c in self.capsulas]
+                distancia_min_capsula = min(distancias_capsulas)
+                puntos -= distancia_min_capsula * 50
         
         # 💊 POWER-UPS: Prioridad cuando NO tiene poder y fantasmas están cerca
         if self.power_ups and not self.pacman_poderoso:
@@ -414,18 +451,18 @@ class EstadoJuego:
                 
                 # Si fantasma está peligrosamente cerca, PRIORIDAD MÁXIMA en power-up
                 if distancia_fantasma_cercano <= 6:
-                    puntos -= distancia_min_power * 200  # ¡IR AL POWER-UP YA!
+                    puntos -= distancia_min_power * 250  # ¡IR AL POWER-UP YA!
                     
                     if distancia_min_power <= 2:
-                        puntos += 800  # ¡Casi ahí!
+                        puntos += 1000  # ¡Casi ahí!
                     elif distancia_min_power <= 4:
-                        puntos += 500
+                        puntos += 600
                 elif distancia_fantasma_cercano <= 10:
-                    puntos -= distancia_min_power * 60
+                    puntos -= distancia_min_power * 80
                 else:
-                    puntos -= distancia_min_power * 20
+                    puntos -= distancia_min_power * 30
             else:
-                puntos -= distancia_min_power * 15
+                puntos -= distancia_min_power * 25
         
         # 🍪 CÁPSULAS: Cuando NO tiene poder y está seguro
         if self.capsulas and not self.pacman_poderoso:
@@ -439,17 +476,17 @@ class EstadoJuego:
                 
                 # Solo buscar cápsulas si está relativamente seguro
                 if distancia_fantasma_cercano > 7:
-                    puntos -= distancia_min_capsula * 35  # Ir por cápsulas
+                    puntos -= distancia_min_capsula * 40  # Ir por cápsulas
                 elif distancia_fantasma_cercano > 5:
-                    puntos -= distancia_min_capsula * 15  # Cápsulas de oportunidad
+                    puntos -= distancia_min_capsula * 20  # Cápsulas de oportunidad
             else:
-                puntos -= distancia_min_capsula * 40  # Sin fantasmas, ir directo
+                puntos -= distancia_min_capsula * 50  # Sin fantasmas, ir directo
         
         # 🏆 Bonificaciones por progreso
-        puntos += self.capsulas_recogidas * 80
+        puntos += self.capsulas_recogidas * 100
         
-        # ⏱️ Penalización leve por tiempo
-        puntos -= self.turnos_totales * 0.15
+        # ⏱️ Penalización muy leve por tiempo
+        puntos -= self.turnos_totales * 0.1
         
         return puntos
     
@@ -478,5 +515,7 @@ class EstadoJuego:
             'pacman_poderoso': self.pacman_poderoso,
             'turnos_poder_restantes': self.turnos_poder_restantes,
             'num_fantasmas_total': 3,
+            'num_fantasmas_restantes': len(self.pos_fantasmas),
+            'fantasmas_comidos': 3 - len(self.pos_fantasmas),
             'velocidad_fantasmas': self.velocidad_fantasma_asustado if self.pacman_poderoso else self.velocidad_fantasma_normal
         }
